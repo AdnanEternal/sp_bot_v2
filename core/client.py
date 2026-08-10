@@ -8,7 +8,7 @@ class ClientManager:
 
     def __init__(self, session_string: str = None):
 
-        self.session_string = session_string or os.getenv("SESSION_STRING")
+        self.session_string = session_string
         if not self.session_string:
             raise ValueError("❌ SESSION_STRING یافت نشد! لطفاً آن را در فایل .env تنظیم کنید.")
 
