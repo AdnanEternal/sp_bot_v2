@@ -1,4 +1,3 @@
-# config.py
 import os
 from dotenv import load_dotenv
 from typing import Optional, Any
@@ -42,6 +41,3 @@ class Config:
 
 # یک نمونه ی سراسری برای استفاده در کل پروژه
 config = Config()
-
-
-

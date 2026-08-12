@@ -1,7 +1,7 @@
-# main.py
 import asyncio
 from core.client import ClientManager
 from config import config
+from core.base_plugin import BasePlugin
 
 async def main():
 

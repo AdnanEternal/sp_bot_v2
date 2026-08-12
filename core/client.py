@@ -1,4 +1,3 @@
-# core/client.py
 import os
 from splusthon import SoroushClient
 from splusthon.sessions import StringSession
