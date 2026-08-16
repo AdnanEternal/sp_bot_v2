@@ -4,7 +4,6 @@ from typing import Optional, Any
 
 
 
-
 class Config:
     _instance = None
     _loaded = False
