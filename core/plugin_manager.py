@@ -1,28 +1,19 @@
-import importlib.util
+import importlib
 import inspect
+import sys
 from pathlib import Path
 
 from core.base_plugin import BasePlugin
+from core.command_manager import CommandManager
 
 
 class PluginManager:
     def __init__(self, client):
         self.client = client
+        self.command_manager = CommandManager()
         self.plugins = {}
 
     def discover_plugins(self, plugins_dir="plugins"):
-        """
-        پلاگین‌ها را از پوشه‌ی plugins پیدا می‌کند.
-
-        ساختار مورد انتظار:
-
-        plugins/
-        ├── plugin_a/
-        │   └── plugin.py
-        ├── plugin_b/
-        │   └── plugin.py
-        """
-
         plugins_path = Path(plugins_dir)
 
         if not plugins_path.exists():
@@ -47,15 +38,17 @@ class PluginManager:
                 continue
 
             plugin_class = self._find_plugin_class(
-                plugin_file,
-                plugin_folder.name
+                plugin_folder
             )
 
             if plugin_class is None:
                 continue
 
             try:
-                plugin_instance = plugin_class(self.client)
+                plugin_instance = plugin_class(
+                    client=self.client,
+                    command_manager=self.command_manager,
+                )
 
                 plugin_name = plugin_instance.name
 
@@ -64,7 +57,8 @@ class PluginManager:
 
                 if plugin_name in self.plugins:
                     print(
-                        f"⚠️ پلاگین '{plugin_name}' قبلاً ثبت شده است."
+                        f"⚠️ پلاگین '{plugin_name}' "
+                        f"قبلاً ثبت شده است."
                     )
                     continue
 
@@ -81,32 +75,18 @@ class PluginManager:
                     f"'{plugin_folder.name}': {e}"
                 )
 
-    def _find_plugin_class(self, plugin_file: Path, module_name: str):
-        """
-        فایل plugin.py را import می‌کند و کلاس ارث‌بری‌شده
-        از BasePlugin را پیدا می‌کند.
-        """
+    def _find_plugin_class(self, plugin_folder: Path):
+
+        package_name = f"plugins.{plugin_folder.name}"
+        plugin_module_name = f"{package_name}.plugin"
 
         try:
-            spec = importlib.util.spec_from_file_location(
-                module_name,
-                plugin_file
-            )
-
-            if spec is None or spec.loader is None:
-                print(
-                    f"❌ امکان ساخت module برای "
-                    f"'{module_name}' وجود ندارد."
-                )
-                return None
-
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            module = importlib.import_module(plugin_module_name)
 
         except Exception as e:
             print(
                 f"❌ خطا در import پلاگین "
-                f"'{module_name}': {e}"
+                f"'{plugin_folder.name}': {e}"
             )
             return None
 
@@ -123,13 +103,13 @@ class PluginManager:
         if not plugin_classes:
             print(
                 f"⚠️ هیچ کلاس پلاگینی در "
-                f"'{module_name}' پیدا نشد."
+                f"'{plugin_folder.name}' پیدا نشد."
             )
             return None
 
         if len(plugin_classes) > 1:
             print(
-                f"⚠️ در پلاگین '{module_name}' بیش از یک "
+                f"⚠️ در پلاگین '{plugin_folder.name}' بیش از یک "
                 f"کلاس BasePlugin پیدا شد."
             )
             return None
@@ -137,10 +117,6 @@ class PluginManager:
         return plugin_classes[0]
 
     async def load_all_plugins(self, plugins_dir="plugins"):
-        """
-        تمام پلاگین‌ها را پیدا و بارگذاری می‌کند.
-        """
-
         self.discover_plugins(plugins_dir)
 
         print(
@@ -149,22 +125,12 @@ class PluginManager:
         )
 
     def get_plugin(self, name):
-        """
-        دریافت یک پلاگین بر اساس نام.
-        """
         return self.plugins.get(name)
 
     def get_all_plugins(self):
-        """
-        دریافت تمام پلاگین‌های بارگذاری‌شده.
-        """
         return self.plugins.values()
 
     async def enable_plugin(self, name):
-        """
-        فعال کردن یک پلاگین.
-        """
-
         plugin = self.get_plugin(name)
 
         if plugin is None:
@@ -174,22 +140,25 @@ class PluginManager:
         if plugin.enabled:
             return True
 
-        if hasattr(plugin, "on_enable"):
+        try:
             result = plugin.on_enable()
 
             if inspect.isawaitable(result):
                 await result
 
-        plugin.enabled = True
+            plugin.enabled = True
 
-        print(f"✅ پلاگین '{name}' فعال شد.")
-        return True
+            print(f"✅ پلاگین '{name}' فعال شد.")
+            return True
+
+        except Exception as e:
+            print(
+                f"❌ خطا در فعال‌سازی پلاگین "
+                f"'{name}': {e}"
+            )
+            return False
 
     async def disable_plugin(self, name):
-        """
-        غیرفعال کردن یک پلاگین.
-        """
-
         plugin = self.get_plugin(name)
 
         if plugin is None:
@@ -199,29 +168,30 @@ class PluginManager:
         if not plugin.enabled:
             return True
 
-        if hasattr(plugin, "on_disable"):
+        try:
             result = plugin.on_disable()
 
             if inspect.isawaitable(result):
                 await result
 
-        plugin.enabled = False
+            self.command_manager.remove_plugin_commands(plugin)
 
-        print(f"🛑 پلاگین '{name}' غیرفعال شد.")
-        return True
+            plugin.enabled = False
+
+            print(f"🛑 پلاگین '{name}' غیرفعال شد.")
+            return True
+
+        except Exception as e:
+            print(
+                f"❌ خطا در غیرفعال‌سازی پلاگین "
+                f"'{name}': {e}"
+            )
+            return False
 
     async def enable_all_plugins(self):
-        """
-        فعال کردن تمام پلاگین‌ها.
-        """
-
         for name in self.plugins:
             await self.enable_plugin(name)
 
     async def disable_all_plugins(self):
-        """
-        غیرفعال کردن تمام پلاگین‌ها.
-        """
-
         for name in list(self.plugins.keys()):
             await self.disable_plugin(name)
