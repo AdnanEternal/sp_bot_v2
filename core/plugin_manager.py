@@ -11,6 +11,7 @@ class PluginManager:
     def __init__(self, client):
         self.client = client
         self.command_manager = CommandManager()
+        self.command_manager.register_dispatcher(client)
         self.plugins = {}
 
     def discover_plugins(self, plugins_dir="plugins"):
@@ -173,6 +174,8 @@ class PluginManager:
 
             if inspect.isawaitable(result):
                 await result
+
+            await plugin.cleanup()
 
             self.command_manager.remove_plugin_commands(plugin)
 

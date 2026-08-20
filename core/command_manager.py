@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from typing import Callable
 
+from splusthon import events
+
+from core.permissions import is_chat_admin
+
 
 @dataclass
 class Command:
@@ -14,6 +18,7 @@ class Command:
 class CommandManager:
     def __init__(self):
         self.commands = {}
+        self.prefix = "!"
 
     def add_command(
         self,
@@ -51,3 +56,40 @@ class CommandManager:
 
     def get_all_commands(self):
         return self.commands.values()
+
+    def register_dispatcher(self, client):
+        @client.on(events.NewMessage(incoming=True))
+        async def dispatcher(event):
+            text = event.raw_text
+
+            if not text or not text.startswith(self.prefix):
+                return
+
+            parts = text[len(self.prefix):].split()
+            if not parts:
+                return
+
+            command_name = parts[0]
+            command = self.get_command(command_name)
+
+            if command is None:
+                return
+
+            if command.chat_type == "group" and not event.is_group:
+                return
+            if command.chat_type == "private" and not event.is_private:
+                return
+
+            if command.permission == "admin":
+                chat = await event.get_chat()
+                sender_id = event.sender_id
+
+                if not await is_chat_admin(client, chat, sender_id):
+                    return
+
+            try:
+                await command.handler(event)
+            except Exception as e:
+                print(f"❌ خطا در اجرای دستور '{command_name}': {e}")
+
+        self._dispatcher = dispatcher
