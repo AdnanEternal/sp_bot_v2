@@ -9,7 +9,7 @@ from .filters import WordFilter
 
 class ContentFilterPlugin(BasePlugin):
     name = "Content Filter"
-    version = "1.0.0"
+    version = "1.1.0"
 
     def __init__(self, client, command_manager):
         super().__init__(client, command_manager)

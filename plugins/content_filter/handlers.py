@@ -6,13 +6,13 @@ async def filter_command(plugin, event):
     if not word:
         return
 
-    plugin.word_filter.add(word)
+    plugin.word_filter.add(event.chat_id, word)
 
     await event.reply(
-        f"کلمه «{word}» به لیست فیلتر اضافه شد."
+        f"کلمه «{word}» به لیست فیلتر این گروه اضافه شد."
     )
 
 
 async def filter_message(plugin, event):
-    if plugin.word_filter.contains(event.raw_text):
+    if plugin.word_filter.contains(event.chat_id, event.raw_text):
         await event.delete()
