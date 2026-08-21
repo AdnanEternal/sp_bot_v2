@@ -32,6 +32,7 @@ async def main():
 
     finally:
         await plugin_manager.disable_all_plugins()
+        await plugin_manager.db.close()
         await client_manager.stop()
 
 

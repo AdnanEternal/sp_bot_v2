@@ -1,5 +1,6 @@
 from config import config
 from core.command_manager import CommandManager
+from core.database_manager import DatabaseManager
 
 
 class BasePlugin:
@@ -13,9 +14,11 @@ class BasePlugin:
         self,
         client,
         command_manager: CommandManager,
+        db: DatabaseManager,
     ):
         self.client = client
         self.command_manager = command_manager
+        self.db = db
         self.enabled = False
         self.config = config
         self._event_handlers = []
@@ -38,6 +41,7 @@ class BasePlugin:
 
         return decorator
 
+
     async def cleanup(self):
         """
         همه‌ی هندلرهایی که با self.listen() ثبت شدن رو پاک می‌کنه.
@@ -46,6 +50,13 @@ class BasePlugin:
         for func, event_type in self._event_handlers:
             self.client.remove_event_handler(func, event_type)
         self._event_handlers.clear()
+
+    async def on_load(self):
+        """
+        فقط یک‌بار موقع discover_plugins صدا زده می‌شه.
+        جای مناسب برای CREATE TABLE IF NOT EXISTS.
+        """
+        pass
 
     async def on_enable(self):
         pass

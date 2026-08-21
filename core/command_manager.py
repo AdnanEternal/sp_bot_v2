@@ -41,6 +41,7 @@ class CommandManager:
     def get_command(self, name: str):
         return self.commands.get(name)
 
+
     def remove_command(self, name: str):
         self.commands.pop(name, None)
 

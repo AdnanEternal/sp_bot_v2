@@ -1,10 +1,10 @@
 import importlib
 import inspect
-import sys
 from pathlib import Path
 
 from core.base_plugin import BasePlugin
 from core.command_manager import CommandManager
+from core.database_manager import DatabaseManager
 
 
 class PluginManager:
@@ -12,6 +12,7 @@ class PluginManager:
         self.client = client
         self.command_manager = CommandManager()
         self.command_manager.register_dispatcher(client)
+        self.db = DatabaseManager()
         self.plugins = {}
 
     def discover_plugins(self, plugins_dir="plugins"):
@@ -32,15 +33,10 @@ class PluginManager:
             plugin_file = plugin_folder / "plugin.py"
 
             if not plugin_file.exists():
-                print(
-                    f"⚠️ فایل plugin.py در پلاگین "
-                    f"'{plugin_folder.name}' پیدا نشد."
-                )
+                print(f"⚠️ فایل plugin.py در پلاگین '{plugin_folder.name}' پیدا نشد.")
                 continue
 
-            plugin_class = self._find_plugin_class(
-                plugin_folder
-            )
+            plugin_class = self._find_plugin_class(plugin_folder)
 
             if plugin_class is None:
                 continue
@@ -49,81 +45,61 @@ class PluginManager:
                 plugin_instance = plugin_class(
                     client=self.client,
                     command_manager=self.command_manager,
+                    db=self.db,
                 )
 
-                plugin_name = plugin_instance.name
-
-                if not plugin_name:
-                    plugin_name = plugin_folder.name
+                plugin_name = plugin_instance.name or plugin_folder.name
 
                 if plugin_name in self.plugins:
-                    print(
-                        f"⚠️ پلاگین '{plugin_name}' "
-                        f"قبلاً ثبت شده است."
-                    )
+                    print(f"⚠️ پلاگین '{plugin_name}' قبلاً ثبت شده است.")
                     continue
 
                 self.plugins[plugin_name] = plugin_instance
 
-                print(
-                    f"✅ پلاگین '{plugin_name}' "
-                    f"v{plugin_instance.version} بارگذاری شد."
-                )
+                print(f"✅ پلاگین '{plugin_name}' v{plugin_instance.version} بارگذاری شد.")
 
             except Exception as e:
-                print(
-                    f"❌ خطا در ساخت پلاگین "
-                    f"'{plugin_folder.name}': {e}"
-                )
+                print(f"❌ خطا در ساخت پلاگین '{plugin_folder.name}': {e}")
 
     def _find_plugin_class(self, plugin_folder: Path):
-
         package_name = f"plugins.{plugin_folder.name}"
         plugin_module_name = f"{package_name}.plugin"
 
         try:
             module = importlib.import_module(plugin_module_name)
-
         except Exception as e:
-            print(
-                f"❌ خطا در import پلاگین "
-                f"'{plugin_folder.name}': {e}"
-            )
+            print(f"❌ خطا در import پلاگین '{plugin_folder.name}': {e}")
             return None
 
-        plugin_classes = []
-
-        for _, obj in inspect.getmembers(module, inspect.isclass):
-            if (
-                issubclass(obj, BasePlugin)
-                and obj is not BasePlugin
-                and obj.__module__ == module.__name__
-            ):
-                plugin_classes.append(obj)
+        plugin_classes = [
+            obj for _, obj in inspect.getmembers(module, inspect.isclass)
+            if issubclass(obj, BasePlugin)
+            and obj is not BasePlugin
+            and obj.__module__ == module.__name__
+        ]
 
         if not plugin_classes:
-            print(
-                f"⚠️ هیچ کلاس پلاگینی در "
-                f"'{plugin_folder.name}' پیدا نشد."
-            )
+            print(f"⚠️ هیچ کلاس پلاگینی در '{plugin_folder.name}' پیدا نشد.")
             return None
 
         if len(plugin_classes) > 1:
-            print(
-                f"⚠️ در پلاگین '{plugin_folder.name}' بیش از یک "
-                f"کلاس BasePlugin پیدا شد."
-            )
+            print(f"⚠️ در پلاگین '{plugin_folder.name}' بیش از یک کلاس BasePlugin پیدا شد.")
             return None
 
         return plugin_classes[0]
 
     async def load_all_plugins(self, plugins_dir="plugins"):
+        await self.db.connect()
+
         self.discover_plugins(plugins_dir)
 
-        print(
-            f"📦 تعداد پلاگین‌های بارگذاری‌شده: "
-            f"{len(self.plugins)}"
-        )
+        for plugin in self.plugins.values():
+            try:
+                await plugin.on_load()
+            except Exception as e:
+                print(f"❌ خطا در on_load پلاگین '{plugin.name}': {e}")
+
+        print(f"📦 تعداد پلاگین‌های بارگذاری‌شده: {len(self.plugins)}")
 
     def get_plugin(self, name):
         return self.plugins.get(name)
@@ -133,62 +109,40 @@ class PluginManager:
 
     async def enable_plugin(self, name):
         plugin = self.get_plugin(name)
-
         if plugin is None:
             print(f"⚠️ پلاگین '{name}' پیدا نشد.")
             return False
-
         if plugin.enabled:
             return True
-
         try:
             result = plugin.on_enable()
-
             if inspect.isawaitable(result):
                 await result
-
             plugin.enabled = True
-
             print(f"✅ پلاگین '{name}' فعال شد.")
             return True
-
         except Exception as e:
-            print(
-                f"❌ خطا در فعال‌سازی پلاگین "
-                f"'{name}': {e}"
-            )
+            print(f"❌ خطا در فعال‌سازی پلاگین '{name}': {e}")
             return False
 
     async def disable_plugin(self, name):
         plugin = self.get_plugin(name)
-
         if plugin is None:
             print(f"⚠️ پلاگین '{name}' پیدا نشد.")
             return False
-
         if not plugin.enabled:
             return True
-
         try:
             result = plugin.on_disable()
-
             if inspect.isawaitable(result):
                 await result
-
             await plugin.cleanup()
-
             self.command_manager.remove_plugin_commands(plugin)
-
             plugin.enabled = False
-
             print(f"🛑 پلاگین '{name}' غیرفعال شد.")
             return True
-
         except Exception as e:
-            print(
-                f"❌ خطا در غیرفعال‌سازی پلاگین "
-                f"'{name}': {e}"
-            )
+            print(f"❌ خطا در غیرفعال‌سازی پلاگین '{name}': {e}")
             return False
 
     async def enable_all_plugins(self):
